@@ -18,6 +18,8 @@ Not yet released.
 
 **Bug fixes**
 
+* Accessibility of keyboard navigation.
+
 **Compatibility**
 
 * Weblate now uses mistletoe instead of misaka as a Markdown renderer.
@@ -31,7 +33,7 @@ Please follow :ref:`generic-upgrade-instructions` in order to perform update.
 Weblate 5.6.2
 -------------
 
-Not yet released.
+Released on July 1st 2024.
 
 **Bug fixes**
 
@@ -40,7 +42,7 @@ Not yet released.
 * :ref:`addons` button layout.
 * Crash when installing :ref:`addon-weblate.discovery.discovery` add-on.
 * Removal of source strings in :ref:`glossary`.
-* Validation of :ref:`projectbackup` ZIP file upon restoring.
+* Validation of :ref:`projectbackup` ZIP file upon restoring (CVE-2024-39303 / GHSA-jfgp-674x-6q4p).
 
 **Upgrading**
 
@@ -152,7 +154,7 @@ Released on May 3rd 2024.
 **Improvements**
 
 * Improved performance of rendering large lists of objects.
-* Added links to manage other scope :ref:`addons`.
+* Component management: added links to manage project/site-wide :ref:`addons`.
 
 **Bug fixes**
 
