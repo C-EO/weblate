@@ -8,10 +8,12 @@ import time
 import unicodedata
 
 from django.conf import settings
+from django.http import HttpResponseRedirect
 from django.shortcuts import redirect
 from django.urls import reverse
-from django.utils.http import url_has_allowed_host_and_scheme
+from django.utils.http import url_has_allowed_host_and_scheme, urlencode
 from django.utils.translation import gettext
+from django_otp import DEVICE_ID_SESSION_KEY
 from social_core.exceptions import AuthAlreadyAssociated, AuthMissingParameter
 from social_core.pipeline.partial import partial
 from social_core.utils import PARTIAL_TOKEN_SESSION_NAME
@@ -20,6 +22,8 @@ from weblate.accounts.models import AuditLog, VerifiedEmail
 from weblate.accounts.notifications import send_notification_email
 from weblate.accounts.templatetags.authnames import get_auth_name
 from weblate.accounts.utils import (
+    SESSION_SECOND_FACTOR_SOCIAL,
+    SESSION_SECOND_FACTOR_USER,
     adjust_session_expiry,
     cycle_session_keys,
     invalidate_reset_codes,
@@ -234,6 +238,14 @@ def verify_open(
     **kwargs,
 ) -> None:
     """Check whether it is possible to create new user."""
+    # Ensure it's still same user (if sessions was kept as this is to avoid
+    # completing authentication under different user than initiated it, with
+    # new session, it will complete as new user)
+    current_user = strategy.request.user.pk
+    init_user = strategy.request.session.get("social_auth_user")
+    if strategy.request.session.session_key and current_user != init_user:
+        raise AuthMissingParameter(backend, "user")
+
     # Check whether registration is open
     if (
         not user
@@ -243,14 +255,6 @@ def verify_open(
         and backend.name not in settings.REGISTRATION_ALLOW_BACKENDS
     ):
         raise AuthMissingParameter(backend, "disabled")
-
-    # Ensure it's still same user (if sessions was kept as this is to avoid
-    # completing authentication under different user than initiated it, with
-    # new session, it will complete as new user)
-    current_user = strategy.request.user.pk
-    init_user = strategy.request.session.get("social_auth_user")
-    if strategy.request.session.session_key and current_user != init_user:
-        raise AuthMissingParameter(backend, "user")
 
 
 def cleanup_next(strategy, **kwargs):
@@ -561,3 +565,22 @@ def notify_disconnect(strategy, backend, entries, user: User, **kwargs) -> None:
             method=backend.name,
             name=social.uid,
         )
+
+
+@partial
+def second_factor(strategy, backend, user: User, current_partial, **kwargs):
+    """Force authentication when adding new association."""
+    if user.profile.has_2fa and DEVICE_ID_SESSION_KEY not in strategy.request.session:
+        # Store session indication for second factor
+        strategy.request.session[SESSION_SECOND_FACTOR_USER] = (user.id, "")
+        strategy.request.session[SESSION_SECOND_FACTOR_SOCIAL] = True
+        # Redirect to second factor login
+        continue_url = "{}?partial_token={}".format(
+            reverse("social:complete", args=(backend.name,)), current_partial.token
+        )
+        login_params = {"next": continue_url}
+        login_url = reverse(
+            "2fa-login", kwargs={"backend": user.profile.get_second_factor_type()}
+        )
+        return HttpResponseRedirect(f"{login_url}?{urlencode(login_params)}")
+    return None
